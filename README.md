@@ -81,7 +81,3 @@ Or via command line:
 ```bash
 python main.py --api-key your_key https://example.com
 ```
-
-## License
-
-MIT 
