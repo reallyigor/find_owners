@@ -8,7 +8,7 @@ import re
 import requests
 
 from owners_finder.api_client import call_perplexity_api, create_company_prompt, create_owners_prompt, extract_content_from_response
-from owners_finder.models import create_company_info, create_owner, validate_url, create_ceo_info
+from owners_finder.models import create_company_info, create_owner, validate_url, create_management_info, create_executive_info
 
 
 def find_company_owners(website_url):
@@ -69,14 +69,26 @@ def find_company_owners(website_url):
                         owners_content = extract_content_from_response(owners_response)
                         cleaned_owners_content = clean_response_content(owners_content)
                         
-                        # Try to extract owners from the response
-                        additional_owners = parse_owners_response(cleaned_owners_content)
+                        # Try to extract owners and management from the response
+                        additional_owners, additional_management = parse_owners_response(cleaned_owners_content)
                         
                         if additional_owners:
                             company_info["owners"] = additional_owners
                             print(f"Found {len(additional_owners)} owner(s) in detailed search.")
                         else:
                             print("No additional owners found in detailed search.")
+                        
+                        # Merge management information if found
+                        if additional_management:
+                            if not company_info.get("management"):
+                                company_info["management"] = additional_management
+                            else:
+                                # Merge with existing management info
+                                existing_management = company_info["management"]
+                                for role in ["ceo", "cfo", "coo"]:
+                                    if role in additional_management and additional_management[role]:
+                                        if not existing_management.get(role):
+                                            existing_management[role] = additional_management[role]
                     
             except Exception as e:
                 print(f"Warning: Failed to find additional owners: {str(e)}")
@@ -202,21 +214,46 @@ def structure_company_data(json_data, website_url):
                 owner = create_owner(name=owner_data)
                 owners.append(owner)
 
-    # Extract CEO information
-    ceo = None
-    raw_ceo = json_data.get("ceo")
-    if raw_ceo and isinstance(raw_ceo, dict):
-        ceo = create_ceo_info(
-            name=raw_ceo.get("name"),
-            title=raw_ceo.get("title")
-        )
+    # Extract management information
+    management = None
+    raw_management = json_data.get("management")
+    if raw_management and isinstance(raw_management, dict):
+        ceo_info = None
+        cfo_info = None
+        coo_info = None
+        
+        # Extract CEO information
+        raw_ceo = raw_management.get("ceo")
+        if raw_ceo and isinstance(raw_ceo, dict):
+            ceo_info = create_executive_info(
+                name=raw_ceo.get("name"),
+                title=raw_ceo.get("title")
+            )
+        
+        # Extract CFO information
+        raw_cfo = raw_management.get("cfo")
+        if raw_cfo and isinstance(raw_cfo, dict):
+            cfo_info = create_executive_info(
+                name=raw_cfo.get("name"),
+                title=raw_cfo.get("title")
+            )
+        
+        # Extract COO information
+        raw_coo = raw_management.get("coo")
+        if raw_coo and isinstance(raw_coo, dict):
+            coo_info = create_executive_info(
+                name=raw_coo.get("name"),
+                title=raw_coo.get("title")
+            )
+        
+        management = create_management_info(ceo=ceo_info, cfo=cfo_info, coo=coo_info)
 
     return create_company_info(
         company_name=json_data.get("company_name", "Unknown"),
         website=website_url,
         description=json_data.get("description", "No description available"),
         owners=owners,
-        ceo=ceo,
+        management=management,
         industry=json_data.get("industry"),
         founded_year=json_data.get("founded_year"),
         headquarters=json_data.get("headquarters"),
@@ -244,15 +281,15 @@ def parse_text_response(text, website_url):
     # Extract owners/founders
     owners = extract_owners_from_text(text)
     
-    # Extract CEO information
-    ceo = extract_ceo_from_text(text)
+    # Extract management information
+    management = extract_management_from_text(text)
     
     return create_company_info(
         company_name=company_name or "Unknown",
         website=website_url,
         description=description or "No description available",
         owners=owners,
-        ceo=ceo,
+        management=management,
         industry=industry,
         founded_year=founded,
         headquarters=headquarters
@@ -312,34 +349,33 @@ def extract_owners_from_text(text):
     return owners
 
 
-def extract_ceo_from_text(text):
+def extract_management_from_text(text):
     """
-    Extract CEO information from text.
-    
+    Extract management information from text.
+
     Args:
         text (str): Text to search in
-        
+
     Returns:
-        dict or None: CEO information dictionary or None
+        dict or None: Management information dictionary or None
     """
-    # Look for CEO patterns
-    ceo_patterns = [
-        r"CEO[:\s]+([^\n\r.]+)",
-        r"Chief Executive Officer[:\s]+([^\n\r.]+)",
-        r"chief executive[:\s]+([^\n\r.]+)",
-        r"led by[:\s]+([^\n\r.]+)",
-        r"headed by[:\s]+([^\n\r.]+)"
+    # Look for management patterns
+    management_patterns = [
+        r"management[:\s]+([^\n\r.]+)",
+        r"leadership[:\s]+([^\n\r.]+)",
+        r"executive[:\s]+([^\n\r.]+)",
+        r"board of directors[:\s]+([^\n\r.]+)",
     ]
     
-    for pattern in ceo_patterns:
+    for pattern in management_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
             # Clean up the match
             name = match.strip()
             if name and len(name) < 100:  # Sanity check
-                return create_ceo_info(
+                return create_management_info(
                     name=name,
-                    title="CEO"
+                    title="Management"
                 )
     
     return None
@@ -347,50 +383,100 @@ def extract_ceo_from_text(text):
 
 def parse_owners_response(api_content):
     """
-    Parse owners information from API response content specifically for owners search.
+    Parse owners and management information from API response content specifically for owners search.
 
     Args:
         api_content (str): The content from the API response
 
     Returns:
-        list: List of owner dictionaries
+        tuple: (list of owner dictionaries, management dictionary or None)
     """
     try:
         if not api_content:
-            return []
+            return [], None
 
         # Try to extract JSON from the response
         json_data = extract_json_from_text(api_content)
         
-        if json_data and "owners" in json_data:
-            owners = []
-            raw_owners = json_data["owners"]
-            
-            if raw_owners and isinstance(raw_owners, list):
-                for owner_data in raw_owners:
-                    if isinstance(owner_data, dict):
-                        name = owner_data.get("name") or "Unknown"
-                        # Only add owners with valid names
-                        if name and name != "Unknown":
-                            owner = create_owner(
-                                name=name,
-                                title=owner_data.get("title"),
-                                ownership_percentage=owner_data.get("ownership_percentage"),
-                            )
+        owners = []
+        management = None
+        
+        if json_data:
+            # Extract owners
+            if "owners" in json_data:
+                raw_owners = json_data["owners"]
+                
+                if raw_owners and isinstance(raw_owners, list):
+                    for owner_data in raw_owners:
+                        if isinstance(owner_data, dict):
+                            name = owner_data.get("name") or "Unknown"
+                            # Only add owners with valid names
+                            if name and name != "Unknown":
+                                owner = create_owner(
+                                    name=name,
+                                    title=owner_data.get("title"),
+                                    ownership_percentage=owner_data.get("ownership_percentage"),
+                                )
+                                owners.append(owner)
+                        elif isinstance(owner_data, str):
+                            # Handle case where owner is just a string
+                            owner = create_owner(name=owner_data)
                             owners.append(owner)
-                    elif isinstance(owner_data, str):
-                        # Handle case where owner is just a string
-                        owner = create_owner(name=owner_data)
-                        owners.append(owner)
             
-            return owners
+            # Extract management
+            if "management" in json_data:
+                raw_management = json_data["management"]
+                if raw_management and isinstance(raw_management, dict):
+                    ceo_info = None
+                    cfo_info = None
+                    coo_info = None
+                    
+                    # Extract CEO
+                    if "ceo" in raw_management and raw_management["ceo"]:
+                        ceo_data = raw_management["ceo"]
+                        if isinstance(ceo_data, dict):
+                            ceo_info = create_executive_info(
+                                name=ceo_data.get("name"),
+                                title=ceo_data.get("title")
+                            )
+                        elif isinstance(ceo_data, str):
+                            ceo_info = create_executive_info(name=ceo_data)
+                    
+                    # Extract CFO
+                    if "cfo" in raw_management and raw_management["cfo"]:
+                        cfo_data = raw_management["cfo"]
+                        if isinstance(cfo_data, dict):
+                            cfo_info = create_executive_info(
+                                name=cfo_data.get("name"),
+                                title=cfo_data.get("title")
+                            )
+                        elif isinstance(cfo_data, str):
+                            cfo_info = create_executive_info(name=cfo_data)
+                    
+                    # Extract COO
+                    if "coo" in raw_management and raw_management["coo"]:
+                        coo_data = raw_management["coo"]
+                        if isinstance(coo_data, dict):
+                            coo_info = create_executive_info(
+                                name=coo_data.get("name"),
+                                title=coo_data.get("title")
+                            )
+                        elif isinstance(coo_data, str):
+                            coo_info = create_executive_info(name=coo_data)
+                    
+                    management = create_management_info(ceo=ceo_info, cfo=cfo_info, coo=coo_info)
         else:
             # Fallback to text parsing if no JSON found
-            return extract_owners_from_text(api_content)
+            owners = extract_owners_from_text(api_content)
+            management = extract_management_from_text(api_content)
+        
+        return owners, management
             
     except Exception as e:
         # If parsing fails, try text extraction as fallback
-        return extract_owners_from_text(api_content)
+        owners = extract_owners_from_text(api_content)
+        management = extract_management_from_text(api_content)
+        return owners, management
 
 
 def clean_response_content(content):

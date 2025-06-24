@@ -7,16 +7,17 @@ from owners_finder import find_company_owners, save_to_json
 from owners_finder.config import set_api_key_from_command_line
 
 
-def process_single_url(website_url):
+def process_single_url(website_url, custom_filename=None, company_info=None):
     """Process a single website URL and display results."""
     try:
         print(f"Analyzing company website: {website_url}")
 
-        # Find company owners
-        company_info = find_company_owners(website_url)
+        # Find company owners (only if not already provided)
+        if company_info is None:
+            company_info = find_company_owners(website_url)
 
         # Save to JSON file
-        filename = save_to_json(company_info)
+        filename = save_to_json(company_info, filename=custom_filename)
 
         # Print results
         print(f"\nCompany Information:")
@@ -39,15 +40,33 @@ def process_single_url(website_url):
         print(f"Industry: {company_info.get('industry', 'Not specified')}")
         print(f"Headquarters: {company_info.get('headquarters', 'Not specified')}")
         
-        # Display CEO information
-        if company_info.get('ceo'):
-            ceo = company_info['ceo']
-            ceo_info = ceo.get('name') or "Unknown"
-            if ceo.get('title'):
-                ceo_info += f" - {ceo['title']}"
-            print(f"CEO: {ceo_info}")
+        # Display Management information
+        if company_info.get('management'):
+            management = company_info['management']
+            print(f"Management:")
+            
+            if management.get('ceo'):
+                ceo = management['ceo']
+                ceo_info = ceo.get('name') or "Unknown"
+                if ceo.get('title'):
+                    ceo_info += f" - {ceo['title']}"
+                print(f"  • CEO: {ceo_info}")
+            
+            if management.get('cfo'):
+                cfo = management['cfo']
+                cfo_info = cfo.get('name') or "Unknown"
+                if cfo.get('title'):
+                    cfo_info += f" - {cfo['title']}"
+                print(f"  • CFO: {cfo_info}")
+            
+            if management.get('coo'):
+                coo = management['coo']
+                coo_info = coo.get('name') or "Unknown"
+                if coo.get('title'):
+                    coo_info += f" - {coo['title']}"
+                print(f"  • COO: {coo_info}")
         else:
-            print("CEO: Not found")
+            print("Management: Not found")
 
         print(f"\nResults saved to: {filename}")
 
@@ -84,7 +103,7 @@ def process_urls_from_file(file_path):
         print(f"Found {len(urls)} URLs to process from '{file_path}'")
         print("=" * 60)
 
-        # Process each URL
+        # Process each URL with indexed filenames
         successful = 0
         failed = 0
 
@@ -92,9 +111,26 @@ def process_urls_from_file(file_path):
             print(f"\n[{i}/{len(urls)}] Processing: {url}")
             print("-" * 40)
             
-            if process_single_url(url):
-                successful += 1
-            else:
+            try:
+                # Find company owners first to get company name
+                company_info = find_company_owners(url)
+                
+                # Create indexed filename with company name
+                company_name = company_info.get("company_name") or "unknown_company"
+                clean_name = "".join(c for c in str(company_name) if c.isalnum() or c in (" ", "-", "_")).rstrip()
+                clean_name = clean_name.replace(" ", "_").lower()
+                if not clean_name:
+                    clean_name = "unknown_company"
+                
+                indexed_filename = f"{str(i).zfill(5)}_{clean_name}_info"
+                
+                if process_single_url(url, custom_filename=indexed_filename, company_info=company_info):
+                    successful += 1
+                else:
+                    failed += 1
+                    
+            except Exception as e:
+                print(f"Failed to process {url}: {e}")
                 failed += 1
             
             print("-" * 40)

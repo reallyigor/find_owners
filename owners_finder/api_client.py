@@ -75,7 +75,7 @@ Please analyze the company website at {website_url}, then find and provide the f
 1. Company name
 2. Brief description of what the company does (1-2 sentences)
 3. List of owners/founders with their names and titles
-4. CEO information (name and title)
+4. Management information (CEO, CFO, COO with names and titles)
 5. Industry/sector
 6. Year founded (if available)
 7. Headquarters location (if available)
@@ -84,22 +84,23 @@ Please format the response as a JSON object with these exact keys:
 - company_name
 - description
 - owners (array of objects with name, title, ownership_percentage)
-- ceo (object with name, title)
+- management (object with ceo, cfo, coo - each containing name and title)
 - industry
 - founded_year
 - headquarters
 
-For the CEO section, please include:
-- name: Full name of the CEO
-- title: Official title (CEO, Chief Executive Officer, etc.)
+For the management section, please include:
+- ceo: CEO information (name and title)
+- cfo: CFO information (name and title) if available
+- coo: COO information (name and title) if available
 
-If any information is not available, use null for that field. Focus on publicly available information about ownership, leadership, and company details.
+If any management position is not available, omit that key from the management object. Focus on publicly available information about ownership, leadership, and company details.
 """
 
 
 def create_owners_prompt(company_name):
     """
-    Create a prompt specifically for finding company owners/founders.
+    Create a prompt specifically for finding company owners/founders and management.
 
     Args:
         company_name (str): The company name
@@ -108,17 +109,23 @@ def create_owners_prompt(company_name):
         str: The formatted prompt
     """
     return f"""
-Find the owner of {company_name}.
+Find the owners and management information for {company_name}.
 
 Please provide the response in JSON format with these exact keys:
 - owners (array of objects with name, title, ownership_percentage if known)
+- management (object with ceo, cfo, coo - each containing name and title)
 
 Each owner object should include:
 - name: Full name of the owner/founder
 - title: Their role/title (Founder, Owner, Major Shareholder, etc.)
 - ownership_percentage: Their ownership stake if publicly known (or null if unknown)
 
-If you cannot find specific ownership information, please indicate that in the response. Focus only on actual ownership, not just management positions.
+The management object should include:
+- ceo: CEO information (name and title)
+- cfo: CFO information (name and title) if available
+- coo: COO information (name and title) if available
+
+If any management position is not available, omit that key from the management object. Focus on both ownership and leadership information that is publicly available.
 """
 
 

@@ -8,16 +8,30 @@ def create_owner(name, title=None, ownership_percentage=None):
     return {"name": name, "title": title, "ownership_percentage": ownership_percentage}
 
 
-def create_ceo_info(name, title=None):
-    """Create a CEO information dictionary."""
+def create_management_info(ceo=None, cfo=None, coo=None):
+    """Create a management information dictionary."""
+    management = {}
+    
+    if ceo:
+        management["ceo"] = ceo
+    if cfo:
+        management["cfo"] = cfo
+    if coo:
+        management["coo"] = coo
+        
+    return management if management else None
+
+
+def create_executive_info(name, title=None):
+    """Create an executive information dictionary."""
     return {
         "name": name,
-        "title": title or "CEO"
+        "title": title
     }
 
 
 def create_company_info(
-    company_name, website, description, owners=None, industry=None, founded_year=None, headquarters=None, ceo=None
+    company_name, website, description, owners=None, industry=None, founded_year=None, headquarters=None, management=None
 ):
     """Create a company info dictionary."""
     return {
@@ -25,7 +39,7 @@ def create_company_info(
         "website": website,
         "description": description,
         "owners": owners or [],
-        "ceo": ceo,  # Dedicated CEO information
+        "management": management,  # Management information (CEO, CFO, COO)
         "industry": industry,
         "founded_year": founded_year,
         "headquarters": headquarters
@@ -52,9 +66,19 @@ def example_company_info():
                 "ownership_percentage": "60%"
             }
         ],
-        "ceo": {
-            "name": "John Doe",
-            "title": "Chief Executive Officer"
+        "management": {
+            "ceo": {
+                "name": "John Doe",
+                "title": "Chief Executive Officer"
+            },
+            "cfo": {
+                "name": "Jane Smith",
+                "title": "Chief Financial Officer"
+            },
+            "coo": {
+                "name": "Bob Johnson",
+                "title": "Chief Operating Officer"
+            }
         },
         "industry": "Technology",
         "founded_year": "2020",
